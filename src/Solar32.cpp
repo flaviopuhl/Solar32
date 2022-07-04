@@ -15,6 +15,11 @@
 #define SSID "CasaDoTheodoro1"
 #define SSID_PASSWORD "09012011"
 
+#define API_KEY "AIzaSyBVNZmsEJ6gAKi6F2dhpQRaDbJVcv-zMY4"     // Firebase: Define the API Key 
+#define USER_EMAIL "flaviopuhljr@gmail.com"                   // Firebase: Define the user Email 
+#define USER_PASSWORD "Theodoro@01"                           // Firebase: Define password 
+#define STORAGE_BUCKET_ID "firmwareota-a580e.appspot.com"     // Firebase: Define the Firebase storage bucket ID e.g bucket-name.appspot.com 
+#define FIRMWARE_PATH "test/firmware.bin"                     // Firebase: Define the firmware path on Firebase
 
 const int SolarPanelAI = 34;        // Solar Panel is connected to GPIO 34 (Analog ADC1_CH6)  
 const int BatteryAI = 35;           // Battery is connected to GPIO 35     (Analog ADC1_CH7)
