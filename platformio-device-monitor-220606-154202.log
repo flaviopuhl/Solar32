@@ -1,0 +1,14 @@
+15:42:02.624 > [NETWORK] Connected to WiFi!
+15:42:02.627 > [NETWORK] Getting IP Address...
+15:42:02.630 > [NETWORK] Got IP Address: 192.168.164.203
+15:42:02.634 > [NETWORK] Connected!
+15:42:02.636 > [_SOCKET] Connecting to iot.thinger.io:25202...
+15:42:02.640 > [_SOCKET] Using secure TLS/SSL connection: yes
+15:42:04.882 > [_SOCKET] Connected!
+15:42:04.885 > [THINGER] Authenticating. User: fpuhl Device: Solar32dev
+15:42:04.890 > [THINGER] Writing bytes: 44 [OK]
+15:42:05.903 > [THINGER] Authenticated
+15:42:05.907 > [THINGER] Available bytes: 24
+15:42:05.910 > [THINGER] Writing bytes: 8 [OK]
+15:43:00.380 > [THINGER] Writing bytes: 2 [OK]
+15:43:00.985 > [THINGER] Available bytes: 2
