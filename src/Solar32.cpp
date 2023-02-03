@@ -1,11 +1,9 @@
 #/*
-  Simple MQTT communication to TAGO.io
+  Solar32
 
-  Sends basic ESP32 data and dummy variables to a Tago.io MQTT broker.
-  See instructions manual for the code implementation details, as well as
-  Tago.io dashboard & device & bucket configuration tricks.
+  Sends basic ESP32 data and solar panel measurements to a Tago.io MQTT broker.
 
-  created 2022
+  created Jan2022
   by Flavio Puhl <flavio_puhl@hotmail.com>
   
   This example code is in the public domain.
@@ -53,12 +51,12 @@ const char *password                          = "09012011";                     
 const char *ID                                = "ThisIsMyESP32ID";                      // Name of our device, must be unique
 const char* BROKER_MQTT                       = "mqtt.tago.io";                          // MQTT Cloud Broker URL
 unsigned int PORT                             = 8883;
-const char *TOKEN                             ="499ef0e5-bdd9-4f59-899d-32db43f7d904";
+const char *TOKEN                             ="1a0dfb08-f3ac-4cef-8643-d8c5a5c39341";
 
 const char *USER                              = "MQTTTuser";
 
-char *DeviceName                              = "InternetMonitor";
-String FirmWareVersion                        = "InternetMonitor_001";
+char *DeviceName                              = "Solar32";
+String FirmWareVersion                        = "Solar32_001";
 
 
 // Insert here topics that the device will publish to broker
@@ -69,15 +67,15 @@ const char *TopicsToPublish[]                 = {
 
 // Insert here the topics the device will listen from broker
 const char *TopicsToSubscribe[]               = { 
-                                                "InternetMonitor_reset", 
-                                                "InternetMonitor_update",  
-                                                "InternetMonitor_builtinled"
+                                                "Solar32_reset", 
+                                                "Solar32_update",  
+                                                "Solar32_builtinled"
                                               };
 
 unsigned long previousMillis = 0; 
 
 // Insert here the *.bin file repository path
-#define OTAFIRMWAREREPO                       "https://firebasestorage.googleapis.com/v0/b/firmwareota-a580e.appspot.com/o/InternetMonitor%2Ffirmware.bin?alt=media"
+#define OTAFIRMWAREREPO                       "https://firebasestorage.googleapis.com/v0/b/firmwareota-a580e.appspot.com/o/Solar32%2Ffirmware.bin?alt=media"
 
 String WakeUpReasonCPU0                       = "";
 String WakeUpReasonCPU1                       = "";
@@ -88,13 +86,37 @@ int UptimeHours                               = 0;
 
 #define WATCHDOGTIMEOUT                       10    // Watchdog set to 10 sec
 
-unsigned int epochAtPwrOff;     // Last epoch time saved before device power off (in sec)
-unsigned int epochAtPwrOn;      // Current epoch time at device power on (in sec)
-unsigned int epochCurrent;      // Current epoch time saved (in sec)
-unsigned int TimeOff;           // Time the device was powered off (in sec)
-unsigned int TimeOn;            // Time the device was powered on (in sec)
-float TotalTimeOff;             // Total time the device was powered off in lifetime (in hours)
-float TotalTimeOn;              // Total time the device was powered on in lifetime (in hours)
+//unsigned int epochAtPwrOff;     // Last epoch time saved before device power off (in sec)
+//unsigned int epochAtPwrOn;      // Current epoch time at device power on (in sec)
+//unsigned int epochCurrent;      // Current epoch time saved (in sec)
+//unsigned int TimeOff;           // Time the device was powered off (in sec)
+//unsigned int TimeOn;            // Time the device was powered on (in sec)
+//float TotalTimeOff;             // Total time the device was powered off in lifetime (in hours)
+//float TotalTimeOn;              // Total time the device was powered on in lifetime (in hours)
+
+const int TP1_Analog_channel_pin     =   35;    // ADC1_CH7 >>> GPIO35
+int       TP1_ADC_VALUE              =   0;
+float     TP1_voltage_value          =   0;
+float     TP1_voltage_divider_ratio  =   1;
+
+const int TP2_Analog_channel_pin     =   33;    // ADC1_CH5 >>> GPIO33
+int       TP2_ADC_VALUE              =   0;
+float     TP2_voltage_value          =   0;
+float     TP2_voltage_divider_ratio  =   1;
+
+const int TP3_Analog_channel_pin     =   34;    // ADC1_CH4 >>> GPIO32
+int       TP3_ADC_VALUE              =   0;
+float     TP3_voltage_value          =   0;
+float     TP3_voltage_divider_ratio  =   1;
+
+// ADC1_CH0 >>> GPIO36
+// ADC1_CH1 >>> ??
+// ADC1_CH2 >>> ??
+// ADC1_CH3 >>> GPIO39
+// ADC1_CH4 >>> GPIO32
+// ADC1_CH5 >>> GPIO33
+// ADC1_CH6 >>> GPIO34
+// ADC1_CH7 >>> GPIO35
 
 /*+--------------------------------------------------------------------------------------+
  *| Callback methods prototypes                                                          |
@@ -105,17 +127,17 @@ void DateAndTimeNPT();
 void SerializeAndPublish();
 void Uptime();
 void IAmAlive();
-void TimeDiagnostics();
+void dataCollect();
 
 /*+--------------------------------------------------------------------------------------+
  *| Tasks lists                                                                          |
  *+--------------------------------------------------------------------------------------+ */
 
-Task t0(01*60*1000, TASK_FOREVER, &IAmAlive);
-Task t1(01*30*1000, TASK_FOREVER, &VerifyWifi);
-Task t2(60*60*1000, TASK_FOREVER, &DateAndTimeNPT);
-Task t3(05*60*1000, TASK_FOREVER, &SerializeAndPublish);
-Task t4(60*60*1000, TASK_FOREVER, &Uptime);
+Task t0(01*30*1000, TASK_FOREVER, &IAmAlive);               // 30sec rate
+Task t1(01*30*1000, TASK_FOREVER, &VerifyWifi);             // 30sec rate
+Task t2(60*60*1000, TASK_FOREVER, &DateAndTimeNPT);         // 1hour rate
+Task t3(01*60*1000, TASK_FOREVER, &SerializeAndPublish);    // 1min rate
+Task t4(60*60*1000, TASK_FOREVER, &Uptime);                 // 1hour rate
 
 /*+--------------------------------------------------------------------------------------+
  *| Objects                                                                              |
@@ -413,54 +435,71 @@ void SerializeAndPublish() {
   if (!MQTTclient.connected())                            // Reconnect if connection to MQTT is lost 
   {    MQTTconnect();      }
 
+  dataCollect();                    // Read voltage values prior sending to broker
+
   char buffer[1024];                                      // JSON serialization 
    
   StaticJsonDocument<1024> doc;
 
     JsonObject doc_0 = doc.createNestedObject();
-    doc_0["variable"] = "InternetMonitor_DeviceName";
+    doc_0["variable"] = "Solar32_DeviceName";
     doc_0["value"] = DeviceName;
     doc_0["unit"] = "";
 
     JsonObject doc_1 = doc.createNestedObject();
-    doc_1["variable"] = "InternetMonitor_FirmWareVersion";
+    doc_1["variable"] = "Solar32_FirmWareVersion";
     doc_1["value"] = FirmWareVersion;
     doc_1["unit"] = "";
 
     JsonObject doc_2 = doc.createNestedObject();
-    doc_2["variable"] = "InternetMonitor_WiFiRSSI";
+    doc_2["variable"] = "Solar32_WiFiRSSI";
     doc_2["value"] = WiFi.RSSI();
     doc_2["unit"] = "dB";
 
     JsonObject doc_3 = doc.createNestedObject();
-    doc_3["variable"] = "InternetMonitor_IP";
+    doc_3["variable"] = "Solar32_IP";
     doc_3["value"] = WiFi.localIP();
     doc_3["unit"] = "";
 
     JsonObject doc_4 = doc.createNestedObject();
-    doc_4["variable"] = "InternetMonitor_LastRoll";
+    doc_4["variable"] = "Solar32_LastRoll";
     doc_4["value"] = DateAndTimeFormattedRTC();
     doc_4["unit"] = "";
 
     JsonObject doc_5 = doc.createNestedObject();
-    doc_5["variable"] = "InternetMonitor_UptimeHours";
+    doc_5["variable"] = "Solar32_UptimeHours";
     doc_5["value"] = UptimeHours;
     doc_5["unit"] = "h";
 
     JsonObject doc_6 = doc.createNestedObject();
-    doc_6["variable"] = "InternetMonitor_WakeUpReasonCPU0";
+    doc_6["variable"] = "Solar32_WakeUpReasonCPU0";
     doc_6["value"] = WakeUpReasonCPU0;
     doc_6["unit"] = "";
 
     JsonObject doc_7 = doc.createNestedObject();
-    doc_7["variable"] = "InternetMonitor_WakeUpReasonCPU1";
+    doc_7["variable"] = "Solar32_WakeUpReasonCPU1";
     doc_7["value"] = WakeUpReasonCPU1;
     doc_7["unit"] = "";
 
     JsonObject doc_8 = doc.createNestedObject();
-    doc_8["variable"] = "InternetMonitor_FreeHeap";
+    doc_8["variable"] = "Solar32_FreeHeap";
     doc_8["value"] = ESP.getFreeHeap();
     doc_8["unit"] = "bytes";
+
+    JsonObject doc_9 = doc.createNestedObject();
+    doc_9["variable"] = "Solar32_TP1";
+    doc_9["value"] = TP1_voltage_value;
+    doc_9["unit"] = "Volts";
+
+    JsonObject doc_10 = doc.createNestedObject();
+    doc_10["variable"] = "Solar32_TP2";
+    doc_10["value"] = TP2_voltage_value;
+    doc_10["unit"] = "Volts";  
+
+    JsonObject doc_11 = doc.createNestedObject();
+    doc_11["variable"] = "Solar32_TP3";
+    doc_11["value"] = TP3_voltage_value;
+    doc_11["unit"] = "Volts";       
 
     serializeJson(doc, buffer);
 
@@ -528,9 +567,11 @@ void IAmAlive(){
   //Serial.print("RTC epoch      : ");
   //Serial.println(DateAndTimeEpochRTC());
 
-  NVMdata.putULong("epochCurrent", DateAndTimeEpochRTC());
+  //NVMdata.putULong("epochCurrent", DateAndTimeEpochRTC());
 
-  TimeDiagnostics();
+  //TimeDiagnostics();
+
+  //dataCollect();
 
   // Close the Preferences
   //NVMdata.end();
@@ -541,7 +582,7 @@ void IAmAlive(){
 /*+--------------------------------------------------------------------------------------+
  *| Internet Availability Diagnostics                                                    |
  *+--------------------------------------------------------------------------------------+ */
-
+/*
 void TimeDiagnostics(){
 
 // Device Total Time OFF (in hours)
@@ -568,6 +609,39 @@ void TimeDiagnostics(){
  
   
 }
+*/
+
+/*+--------------------------------------------------------------------------------------+
+ *| Collect data from analog inputs                                                      |
+ *+--------------------------------------------------------------------------------------+ */
+
+void dataCollect(){
+
+  TP1_ADC_VALUE = analogRead(TP1_Analog_channel_pin);
+  TP1_voltage_value = ((TP1_ADC_VALUE * 3.3 ) / (4095))*TP1_voltage_divider_ratio;
+
+  TP2_ADC_VALUE = analogRead(TP2_Analog_channel_pin);
+  TP2_voltage_value = ((TP2_ADC_VALUE * 3.3 ) / (4095))*TP2_voltage_divider_ratio;
+
+  TP3_ADC_VALUE = analogRead(TP3_Analog_channel_pin);
+  TP3_voltage_value = ((TP3_ADC_VALUE * 3.3 ) / (4095))*TP3_voltage_divider_ratio;
+
+  //int analogValue = analogRead(2);
+  //int analogVolts = analogReadMilliVolts(2);
+
+  Serial.printf("|-----------------------------------------------------|\n");
+  Serial.printf("| TP1_ADC_VALUE        (bits)  : %10u   |\n", TP1_ADC_VALUE);
+  Serial.printf("| TP1_voltage_value    (v)     : %10.3f   |\n", TP1_voltage_value);
+  Serial.printf("|-----------------------------------------------------|\n");
+  Serial.printf("| TP2_ADC_VALUE        (bits)  : %10u   |\n", TP2_ADC_VALUE);
+  Serial.printf("| TP2_voltage_value    (v)     : %10.3f   |\n", TP2_voltage_value);
+  Serial.printf("|-----------------------------------------------------|\n");
+  Serial.printf("| TP3_ADC_VALUE        (bits)  : %10u   |\n", TP3_ADC_VALUE);
+  Serial.printf("| TP3_voltage_value    (v)     : %10.3f   |\n", TP3_voltage_value);
+  Serial.printf("|-----------------------------------------------------|\n");
+ 
+}
+
 
 /*+--------------------------------------------------------------------------------------+
  *| Setup                                                                                |
@@ -581,7 +655,10 @@ void setup() {
   pinMode(LED,OUTPUT);
   digitalWrite(LED,LOW);
 
-  NVMdata.begin("my-app", false);         // Open Preferences with my-app namespace
+  analogReadResolution(12);           // Resolution 12 bits (0 – 4095)
+  analogSetAttenuation(ADC_11db);     // The input voltage of ADC will be attenuated, extending the range of measurement to up to approx. 2600 mV. (1V input = ADC reading of 1575).
+
+  //NVMdata.begin("my-app", false);         // Open Preferences with my-app namespace
 
   //Remove all preferences under the opened namespace
   //preferences.clear();
@@ -589,7 +666,7 @@ void setup() {
   //Remove the specific key
   //preferences.remove("epochAtPwrOff");
 
-  epochAtPwrOff = NVMdata.getULong("epochCurrent", 0);  // retrives the last epoch time before device power off
+  //epochAtPwrOff = NVMdata.getULong("epochCurrent", 0);  // retrives the last epoch time before device power off
 
   Serial.println();
   Serial.println(FirmWareVersion);
@@ -627,7 +704,7 @@ void setup() {
 
   DateAndTimeNPT();     // Get time from NPT and update ESP RTC
 
-  epochAtPwrOn  = DateAndTimeEpochRTC();
+  //epochAtPwrOn  = DateAndTimeEpochRTC();
 
   MQTTconnect();        // Connect to MQTT Broker
 
