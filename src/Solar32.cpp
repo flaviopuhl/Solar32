@@ -97,17 +97,17 @@ int UptimeHours                               = 0;
 const int TP1_Analog_channel_pin     =   35;    // ADC1_CH7 >>> GPIO35
 int       TP1_ADC_VALUE              =   0;
 float     TP1_voltage_value          =   0;
-float     TP1_voltage_divider_ratio  =   1;
+float     TP1_voltage_divider_ratio  =   3.367;
 
 const int TP2_Analog_channel_pin     =   33;    // ADC1_CH5 >>> GPIO33
 int       TP2_ADC_VALUE              =   0;
 float     TP2_voltage_value          =   0;
-float     TP2_voltage_divider_ratio  =   1;
+float     TP2_voltage_divider_ratio  =   3.367;
 
 const int TP3_Analog_channel_pin     =   34;    // ADC1_CH4 >>> GPIO32
 int       TP3_ADC_VALUE              =   0;
 float     TP3_voltage_value          =   0;
-float     TP3_voltage_divider_ratio  =   1;
+float     TP3_voltage_divider_ratio  =   3.367;
 
 // ADC1_CH0 >>> GPIO36
 // ADC1_CH1 >>> ??
@@ -159,7 +159,7 @@ Preferences NVMdata;                // initiate an instance of the Preferences l
  
 void deviceReset() {
 
-  MQTTclient.publish(TopicsToPublish[1], "Restarting device");
+  MQTTclient.publish(TopicsToPublish[1], "[Solar32] > Restarting device");
   delay(1000);
   ESP.restart();
   
@@ -175,12 +175,12 @@ void builtInLedTest(int input) {
   if (input == 0 ) { 
     digitalWrite(LED,LOW);  
     Serial.println("Turning LED off"); 
-    MQTTclient.publish(TopicsToPublish[1], "Turning LED off");
+    MQTTclient.publish(TopicsToPublish[1], "[Solar32] > Turning LED off");
     }     
   if (input == 1 ) { 
     digitalWrite(LED,HIGH); 
     Serial.println("Turning LED on");  
-    MQTTclient.publish(TopicsToPublish[1], "Turning LED on");
+    MQTTclient.publish(TopicsToPublish[1], "[Solar32] > Turning LED on");
     }   
   
 }
@@ -242,9 +242,11 @@ void DateAndTimeNPT(){
 
   timeClient.setTimeOffset(-10800);                                                       // Set offset time in seconds to Brazil timezone GMT-3
 
-    while(!timeClient.update()) {
+    if(!timeClient.update()) {
       timeClient.forceUpdate();
     }
+
+  timeClient.update();  
 
   time_t epochTime = timeClient.getEpochTime();                                             // The time_t type is just an integer.  It is the number of seconds since the Epoch.
 
@@ -336,7 +338,7 @@ void verbose_print_reset_reason(int reason)
 
 void RemoteHTTPOTA(){
 
-  MQTTclient.publish(TopicsToPublish[1], "Updating device");
+  MQTTclient.publish(TopicsToPublish[1], "[Solar32] > Updating device");
 
   //if ((WiFi.status() == WL_CONNECTED && updateSoftareOnNextReboot == 1)) {
   if ((WiFi.status() == WL_CONNECTED)) {
